@@ -182,7 +182,10 @@ def run(stdscr, hits, pattern_args):
             marker = ("▼ " if expanded else "▶ ") if sel else "  "
             attr = curses.A_REVERSE if sel else 0
             safe_add(stdscr, y, 0, marker, attr)
-            safe_add(stdscr, y, 2, head, curses.color_pair(1) | attr)
+            path_part = f"{hit['path']}:"
+            safe_add(stdscr, y, 2, path_part, curses.color_pair(1) | attr)
+            safe_add(stdscr, y, 2 + len(path_part), str(hit["line"]),
+                     curses.color_pair(pairs(78, -1)) | attr)
             x = 2 + len(head) + 1
             raw = hit["text"]
             snippet = raw.lstrip()

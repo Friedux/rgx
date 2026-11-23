@@ -1,0 +1,8 @@
+{
+  "theme": "catppuccin-mocha",
+  "window_height": 15,
+  "colors": {
+    "match_bg": "#f9e2af",
+    "line_number": "#a6e3a1"
+  }
+}

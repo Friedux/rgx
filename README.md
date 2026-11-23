@@ -15,3 +15,13 @@ Matches are highlighted like in rg. For syntax highlighting in the expanded wind
 Requires ripgrep and Python 3. Symlink the script into your PATH:
 
     ln -s /path/to/tools/rgx/rgx ~/.local/bin/rgx
+
+## Configuration
+
+Optional config file: `~/.config/rgx/config.json` (or `$XDG_CONFIG_HOME/rgx/config.json`). See `config.example.json`.
+
+- `theme`: `catppuccin-mocha` (default) or `dracula`
+- `window_height`: height of the expanded file window (default 15)
+- `colors`: overrides for single colors, as `"#rrggbb"`, a 256-color index (0-255) or `"default"`. Hex colors are mapped to the nearest 256-color.
+
+Color keys: `path`, `line_number`, `separator`, `gutter`, `gutter_match`, `match_fg`, `match_bg`, and syntax roles `comment`, `keyword`, `function`, `class`, `decorator`, `builtin`, `tag`, `string`, `number`, `operator`, `heading`, `deleted`, `inserted`.

@@ -16,14 +16,91 @@ except ImportError:
 WINDOW = 15
 MAX_HIGHLIGHT_BYTES = 1_000_000
 
-# Token type -> 256-color (specific before general)
-TOKEN_COLORS = [
-    ("Comment", 244), ("Keyword", 205), ("Name.Function", 78), ("Name.Class", 78),
-    ("Name.Decorator", 179), ("Name.Builtin", 81), ("Name.Tag", 205),
-    ("Literal.String", 186), ("Literal.Number", 141), ("Operator.Word", 205),
-    ("Generic.Heading", 81), ("Generic.Deleted", 203), ("Generic.Inserted", 78),
+# Syntax role -> Pygments token prefix (specific before general)
+TOKEN_ROLES = [
+    ("comment", "Comment"), ("keyword", "Keyword"), ("function", "Name.Function"),
+    ("class", "Name.Class"), ("decorator", "Name.Decorator"), ("builtin", "Name.Builtin"),
+    ("tag", "Name.Tag"), ("string", "Literal.String"), ("number", "Literal.Number"),
+    ("operator", "Operator.Word"), ("heading", "Generic.Heading"),
+    ("deleted", "Generic.Deleted"), ("inserted", "Generic.Inserted"),
 ]
-MATCH_FG, MATCH_BG = 16, 214
+
+THEMES = {
+    "catppuccin-mocha": {
+        "path": "#89dceb", "line_number": "#a6e3a1", "separator": "#f9e2af",
+        "gutter": "#6c7086", "gutter_match": "#f9e2af",
+        "match_fg": "#1e1e2e", "match_bg": "#fab387",
+        "comment": "#6c7086", "keyword": "#cba6f7", "function": "#89b4fa",
+        "class": "#f9e2af", "decorator": "#fab387", "builtin": "#f38ba8",
+        "tag": "#cba6f7", "string": "#a6e3a1", "number": "#fab387",
+        "operator": "#89dceb", "heading": "#89b4fa", "deleted": "#f38ba8",
+        "inserted": "#a6e3a1",
+    },
+    "dracula": {
+        "path": "#8be9fd", "line_number": "#50fa7b", "separator": "#f1fa8c",
+        "gutter": "#6272a4", "gutter_match": "#f1fa8c",
+        "match_fg": "#282a36", "match_bg": "#ffb86c",
+        "comment": "#6272a4", "keyword": "#ff79c6", "function": "#50fa7b",
+        "class": "#8be9fd", "decorator": "#ffb86c", "builtin": "#8be9fd",
+        "tag": "#ff79c6", "string": "#f1fa8c", "number": "#bd93f9",
+        "operator": "#ff79c6", "heading": "#bd93f9", "deleted": "#ff5555",
+        "inserted": "#50fa7b",
+    },
+}
+DEFAULT_THEME = "catppuccin-mocha"
+CONFIG_PATH = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "rgx", "config.json"
+)
+COLORS = {}
+
+
+def hex_to_256(value):
+    """'#rrggbb' -> nearest xterm-256 color index."""
+    r, g, b = (int(value[i:i + 2], 16) for i in (1, 3, 5))
+    levels = [0, 95, 135, 175, 215, 255]
+    ci = [min(range(6), key=lambda i, c=c: abs(levels[i] - c)) for c in (r, g, b)]
+    cube_rgb = [levels[i] for i in ci]
+    cube_idx = 16 + 36 * ci[0] + 6 * ci[1] + ci[2]
+    grey_i = min(23, max(0, round((((r + g + b) / 3) - 8) / 10)))
+    grey = 8 + 10 * grey_i
+    dist = lambda rgb: sum((x - y) ** 2 for x, y in zip(rgb, (r, g, b)))
+    return cube_idx if dist(cube_rgb) <= dist((grey,) * 3) else 232 + grey_i
+
+
+def parse_color(value):
+    if value in ("default", None):
+        return -1
+    if isinstance(value, int) and 0 <= value <= 255:
+        return value
+    if isinstance(value, str) and len(value) == 7 and value[0] == "#":
+        try:
+            return hex_to_256(value)
+        except ValueError:
+            pass
+    raise ValueError(f"invalid color {value!r} (use '#rrggbb', 0-255 or 'default')")
+
+
+def load_config():
+    cfg = {}
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH) as f:
+                cfg = json.load(f)
+        except (OSError, ValueError) as e:
+            sys.exit(f"rgx: cannot read {CONFIG_PATH}: {e}")
+    theme = cfg.get("theme", DEFAULT_THEME)
+    if theme not in THEMES:
+        sys.exit(f"rgx: unknown theme {theme!r} (available: {', '.join(THEMES)})")
+    merged = {**THEMES[theme], **cfg.get("colors", {})}
+    unknown = set(merged) - set(THEMES[theme])
+    if unknown:
+        sys.exit(f"rgx: unknown color keys in config: {', '.join(sorted(unknown))}")
+    try:
+        COLORS.update({k: parse_color(v) for k, v in merged.items()})
+    except ValueError as e:
+        sys.exit(f"rgx: {e}")
+    global WINDOW
+    WINDOW = int(cfg.get("window_height", WINDOW))
 
 
 def search(args):
@@ -59,9 +136,9 @@ def read_lines(path, cache={}):
 
 def token_color(tok):
     name = str(tok)[len("Token."):]
-    for prefix, color in TOKEN_COLORS:
+    for role, prefix in TOKEN_ROLES:
         if name == prefix or name.startswith(prefix + "."):
-            return color
+            return COLORS[role]
     return -1
 
 
@@ -105,7 +182,7 @@ def draw_segments(win, y, x, segments, matches, base_attr, pairs):
         hit = any(a <= i < b for a, b in matches)
         attr = base_attr
         if hit:
-            attr = curses.color_pair(pairs(MATCH_FG, MATCH_BG)) | curses.A_BOLD
+            attr = curses.color_pair(pairs(COLORS["match_fg"], COLORS["match_bg"])) | curses.A_BOLD
         elif fg != -1:
             attr |= curses.color_pair(pairs(fg, -1))
         if ch == "\t":
@@ -128,10 +205,6 @@ def safe_add(win, y, x, s, attr=0):
 def run(stdscr, hits, pattern_args):
     curses.curs_set(0)
     curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_CYAN, -1)
-    curses.init_pair(2, curses.COLOR_YELLOW, -1)
-    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_YELLOW)
-    curses.init_pair(4, curses.COLOR_GREEN, -1)
     pair_cache = {}
 
     def pairs(fg, bg):
@@ -183,9 +256,9 @@ def run(stdscr, hits, pattern_args):
             attr = curses.A_REVERSE if sel else 0
             safe_add(stdscr, y, 0, marker, attr)
             path_part = f"{hit['path']}:"
-            safe_add(stdscr, y, 2, path_part, curses.color_pair(1) | attr)
+            safe_add(stdscr, y, 2, path_part, curses.color_pair(pairs(COLORS["path"], -1)) | attr)
             safe_add(stdscr, y, 2 + len(path_part), str(hit["line"]),
-                     curses.color_pair(pairs(78, -1)) | attr)
+                     curses.color_pair(pairs(COLORS["line_number"], -1)) | attr)
             x = 2 + len(head) + 1
             raw = hit["text"]
             snippet = raw.lstrip()
@@ -197,14 +270,16 @@ def run(stdscr, hits, pattern_args):
                 lines = read_lines(hit["path"])
                 hl = highlighted_lines(hit["path"])
                 mm = match_map.get(hit["path"], {})
-                safe_add(stdscr, y, 2, "─" * max(0, w - 4), curses.color_pair(2))
+                safe_add(stdscr, y, 2, "─" * max(0, w - 4), curses.color_pair(pairs(COLORS["separator"], -1)))
                 y += 1
                 for k in range(ws):
                     n = win_top + k
                     if n >= len(lines):
                         break
                     num = f"{n + 1:>5} "
-                    num_attr = curses.color_pair(2) | curses.A_BOLD if n + 1 in mm else curses.color_pair(4)
+                    num_attr = curses.color_pair(pairs(COLORS["gutter_match" if n + 1 in mm else "gutter"], -1))
+                    if n + 1 in mm:
+                        num_attr |= curses.A_BOLD
                     safe_add(stdscr, y, 2, num, num_attr)
                     draw_segments(stdscr, y, 2 + len(num), hl[n], mm.get(n + 1, []), 0, pairs)
                     y += 1
@@ -272,6 +347,7 @@ def main():
     if not args or args[0] in ("-h", "--help"):
         print("Usage: rgx [rg options] PATTERN [PATH...]\nExample: rgx -i term src/")
         sys.exit(0 if args else 1)
+    load_config()
     hits = search(args)
     if not hits:
         sys.exit("No matches.")

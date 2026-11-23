@@ -25,33 +25,38 @@ TOKEN_ROLES = [
     ("deleted", "Generic.Deleted"), ("inserted", "Generic.Inserted"),
 ]
 
-THEMES = {
-    "catppuccin-mocha": {
-        "path": "#89dceb", "line_number": "#a6e3a1", "separator": "#f9e2af",
-        "gutter": "#6c7086", "gutter_match": "#f9e2af",
-        "match_fg": "#1e1e2e", "match_bg": "#fab387",
-        "comment": "#6c7086", "keyword": "#cba6f7", "function": "#89b4fa",
-        "class": "#f9e2af", "decorator": "#fab387", "builtin": "#f38ba8",
-        "tag": "#cba6f7", "string": "#a6e3a1", "number": "#fab387",
-        "operator": "#89dceb", "heading": "#89b4fa", "deleted": "#f38ba8",
-        "inserted": "#a6e3a1",
-    },
-    "dracula": {
-        "path": "#8be9fd", "line_number": "#50fa7b", "separator": "#f1fa8c",
-        "gutter": "#6272a4", "gutter_match": "#f1fa8c",
-        "match_fg": "#282a36", "match_bg": "#ffb86c",
-        "comment": "#6272a4", "keyword": "#ff79c6", "function": "#50fa7b",
-        "class": "#8be9fd", "decorator": "#ffb86c", "builtin": "#8be9fd",
-        "tag": "#ff79c6", "string": "#f1fa8c", "number": "#bd93f9",
-        "operator": "#ff79c6", "heading": "#bd93f9", "deleted": "#ff5555",
-        "inserted": "#50fa7b",
-    },
-}
+REQUIRED_KEYS = [
+    "path", "line_number", "separator", "gutter", "gutter_match", "match_fg", "match_bg",
+    *(role for role, _ in TOKEN_ROLES),
+]
 DEFAULT_THEME = "catppuccin-mocha"
 CONFIG_PATH = os.path.join(
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "rgx", "config.json"
 )
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+THEME_DIRS = [os.path.join(os.path.dirname(CONFIG_PATH), "themes"), os.path.join(SCRIPT_DIR, "themes")]
 COLORS = {}
+
+
+def available_themes():
+    names = set()
+    for d in THEME_DIRS:
+        if os.path.isdir(d):
+            names.update(f[:-5] for f in os.listdir(d) if f.endswith(".json"))
+    return sorted(names)
+
+
+def load_theme(name):
+    # user themes (~/.config/rgx/themes) take precedence over bundled ones
+    for d in THEME_DIRS:
+        path = os.path.join(d, name + ".json")
+        if os.path.isfile(path):
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except (OSError, ValueError) as e:
+                sys.exit(f"rgx: cannot read theme {path}: {e}")
+    sys.exit(f"rgx: unknown theme {name!r} (available: {', '.join(available_themes())})")
 
 
 def hex_to_256(value):
@@ -89,10 +94,12 @@ def load_config():
         except (OSError, ValueError) as e:
             sys.exit(f"rgx: cannot read {CONFIG_PATH}: {e}")
     theme = cfg.get("theme", DEFAULT_THEME)
-    if theme not in THEMES:
-        sys.exit(f"rgx: unknown theme {theme!r} (available: {', '.join(THEMES)})")
-    merged = {**THEMES[theme], **cfg.get("colors", {})}
-    unknown = set(merged) - set(THEMES[theme])
+    base = load_theme(theme)
+    merged = {**base, **cfg.get("colors", {})}
+    unknown = set(merged) - set(REQUIRED_KEYS)
+    missing = set(REQUIRED_KEYS) - set(merged)
+    if missing:
+        sys.exit(f"rgx: theme {theme!r} is missing colors: {', '.join(sorted(missing))}")
     if unknown:
         sys.exit(f"rgx: unknown color keys in config: {', '.join(sorted(unknown))}")
     try:

@@ -1,0 +1,22 @@
+{
+  "path": "#89dceb",
+  "line_number": "#a6e3a1",
+  "separator": "#f9e2af",
+  "gutter": "#6c7086",
+  "gutter_match": "#f9e2af",
+  "match_fg": "#1e1e2e",
+  "match_bg": "#fab387",
+  "comment": "#6c7086",
+  "keyword": "#cba6f7",
+  "function": "#89b4fa",
+  "class": "#f9e2af",
+  "decorator": "#fab387",
+  "builtin": "#f38ba8",
+  "tag": "#cba6f7",
+  "string": "#a6e3a1",
+  "number": "#fab387",
+  "operator": "#89dceb",
+  "heading": "#89b4fa",
+  "deleted": "#f38ba8",
+  "inserted": "#a6e3a1"
+}
